@@ -1,16 +1,29 @@
 # groq_correction.py - Handles transcription correction using Groq
 from groq import Groq
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+# Recuperar a chave da API
+API_KEY = os.getenv("GROQ_API_KEY")
+
+if not API_KEY:
+    raise ValueError("API key not found. Please set GROQ_API_KEY in the .env file.")
+
 
 def correct_transcription(text):
     try:
-        client = Groq()
+        client = Groq(api_key=API_KEY)
 
         # Send the text to the Groq model for correction
         chat_completion = client.chat.completions.create(
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a helpful assistant that corrects transcription errors."
+                    "content": "You are a transcription expert specializing in correcting errors in audio-to-text transcriptions. "
+                                "Ensure the output is grammatically correct, follows natural language rules, and maintains the original context. "
+                                "Use proper punctuation and capitalization."
                 },
                 {
                     "role": "user",
@@ -18,8 +31,8 @@ def correct_transcription(text):
                 }
             ],
             model="llama-3.3-70b-versatile",
-            temperature=0.5,
-            max_completion_tokens=1024,
+            temperature=0.3,
+            max_completion_tokens=2048,
             top_p=1,
             stop=None,
             stream=False

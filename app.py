@@ -4,8 +4,8 @@ from groq_correction import correct_transcription
 import os
 
 # Path to the MP3 file (use the full absolute path here)
-mp3_path = r"C:\Users\Leonardo\Desktop\Ata\zzz.mp3"  # Adjust to your correct path
-txt_path = "transcription_zzz.txt"
+mp3_path = "audio.mp3"  # Adjust to your correct path
+txt_path = "transcription.txt"
 
 def main():
     # Check if the MP3 file exists
