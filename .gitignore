@@ -3,3 +3,4 @@ venv/
 *.wav
 transcription.txt
 .env
+__pycache__
