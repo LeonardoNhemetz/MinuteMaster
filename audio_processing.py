@@ -42,3 +42,7 @@ def transcribe_audio(mp3_path):
     except Exception as e:
         print(f"An error occurred during transcription: {e}")
         return None
+
+# Main function for processing audio
+def process_audio(mp3_path):
+    return transcribe_audio(mp3_path)
