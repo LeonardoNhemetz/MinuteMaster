@@ -3,65 +3,65 @@ import os
 from pydub import AudioSegment
 from groq import Groq
 
-# Caminho do arquivo MP3 (use o caminho absoluto completo aqui)
-mp3_path = r"C:\Users\Leonardo\Desktop\Ata\zzz.mp3"  # Ajuste para o seu caminho correto
-txt_path = "transcricao_zzz.txt"
+# Path to the MP3 file (use the full absolute path here)
+mp3_path = r"C:\Users\Leonardo\Desktop\Ata\zzz.mp3"  # Adjust to your correct path
+txt_path = "transcription_zzz.txt"
 
-# Função para dividir o áudio em blocos menores
-def dividir_audio(mp3_path, duracao_segmento_ms=60000):
+# Function to split the audio into smaller chunks
+def split_audio(mp3_path, segment_duration_ms=60000):
     audio = AudioSegment.from_mp3(mp3_path)
-    segmentos = []
-    for i in range(0, len(audio), duracao_segmento_ms):
-        segmento = audio[i:i+duracao_segmento_ms]
-        segmento_path = f"segmento_{i // duracao_segmento_ms}.wav"
-        segmento.export(segmento_path, format="wav")
-        segmentos.append(segmento_path)
-    return segmentos
+    segments = []
+    for i in range(0, len(audio), segment_duration_ms):
+        segment = audio[i:i+segment_duration_ms]
+        segment_path = f"segment_{i // segment_duration_ms}.wav"
+        segment.export(segment_path, format="wav")
+        segments.append(segment_path)
+    return segments
 
-# Função para transcrever áudio usando Whisper
-def transcrever_audio(mp3_path):
+# Function to transcribe audio using Whisper
+def transcribe_audio(mp3_path):
     try:
-        # Carregar o modelo Whisper
-        model = whisper.load_model("base")  # O modelo "base" é bom, mas pode ser substituído por "small", "medium", ou "large"
+        # Load the Whisper model
+        model = whisper.load_model("base")  # The "base" model is good but can be replaced with "small", "medium", or "large"
 
-        # Dividir o áudio em segmentos menores (1 minuto por segmento)
-        segmentos = dividir_audio(mp3_path)
-        total_segmentos = len(segmentos)
-        texto_final = ""
+        # Split the audio into smaller segments (1 minute per segment)
+        segments = split_audio(mp3_path)
+        total_segments = len(segments)
+        final_text = ""
 
-        for i, segmento_path in enumerate(segmentos):
-            print(f"Processando segmento {i+1}/{total_segmentos}...")
-            result = model.transcribe(segmento_path, language="pt")  # O idioma é configurado para português
-            texto_final += result["text"] + "\n"
-            progresso = (i + 1) / total_segmentos * 100
-            print(f"Progresso: {progresso:.2f}%")
+        for i, segment_path in enumerate(segments):
+            print(f"Processing segment {i+1}/{total_segments}...")
+            result = model.transcribe(segment_path, language="pt")  # Set the language to Portuguese
+            final_text += result["text"] + "\n"
+            progress = (i + 1) / total_segments * 100
+            print(f"Progress: {progress:.2f}%")
 
-        # Excluir os arquivos temporários (segmentos WAV)
-        for segmento_path in segmentos:
-            os.remove(segmento_path)
-            print(f"Arquivo temporário {segmento_path} excluído.")
+        # Delete temporary files (WAV segments)
+        for segment_path in segments:
+            os.remove(segment_path)
+            print(f"Temporary file {segment_path} deleted.")
 
-        return texto_final
+        return final_text
 
     except Exception as e:
-        print(f"Ocorreu um erro durante a transcrição: {e}")
+        print(f"An error occurred during transcription: {e}")
         return None
 
-# Função para corrigir a transcrição usando o modelo Groq
-def corrigir_transcricao(texto):
+# Function to correct the transcription using the Groq model
+def correct_transcription(text):
     try:
         client = Groq()
 
-        # Enviar o texto para o modelo Groq para correção
+        # Send the text to the Groq model for correction
         chat_completion = client.chat.completions.create(
             messages=[
                 {
                     "role": "system",
-                    "content": "Você é um assistente útil que corrige erros de transcrição."
+                    "content": "You are a helpful assistant that corrects transcription errors."
                 },
                 {
                     "role": "user",
-                    "content": f"Corrija o seguinte texto de transcrição: {texto}. Não escreva mais nada como resposta alem desse texto corrigido"
+                    "content": f"Correct the following transcription text: {text}. Do not write anything extra besides the corrected text."
                 }
             ],
             model="llama-3.3-70b-versatile",
@@ -72,39 +72,39 @@ def corrigir_transcricao(texto):
             stream=False
         )
 
-        # A resposta do modelo é o texto corrigido
+        # The model's response is the corrected text
         return chat_completion.choices[0].message.content
 
     except Exception as e:
-        print(f"Ocorreu um erro durante a correção: {e}")
+        print(f"An error occurred during correction: {e}")
         return None
 
-# Função principal para processar o áudio
-def processar_audio(mp3_path, txt_path):
-    # Verifica se o arquivo MP3 existe
+# Main function to process the audio
+def process_audio(mp3_path, txt_path):
+    # Check if the MP3 file exists
     if not os.path.exists(mp3_path):
-        print(f"Arquivo {mp3_path} não encontrado.")
+        print(f"File {mp3_path} not found.")
         return
 
-    print(f"Arquivo {mp3_path} encontrado!")
+    print(f"File {mp3_path} found!")
 
-    # Transcrever o áudio
-    texto_transcrito = transcrever_audio(mp3_path)
+    # Transcribe the audio
+    transcribed_text = transcribe_audio(mp3_path)
     
-    if texto_transcrito:
-        # Corrigir a transcrição usando o modelo Groq
-        texto_corrigido = corrigir_transcricao(texto_transcrito)
+    if transcribed_text:
+        # Correct the transcription using the Groq model
+        corrected_text = correct_transcription(transcribed_text)
 
-        if texto_corrigido:
-            # Sobrescrever a transcrição corrigida no arquivo .txt
+        if corrected_text:
+            # Overwrite the corrected transcription in the .txt file
             with open(txt_path, "w", encoding="utf-8") as f:
-                f.write(texto_corrigido)
+                f.write(corrected_text)
             
-            print(f"Transcrição corrigida concluída e salva em: {txt_path}")
+            print(f"Corrected transcription completed and saved to: {txt_path}")
         else:
-            print("Não foi possível corrigir a transcrição.")
+            print("Unable to correct the transcription.")
     else:
-        print("Não foi possível transcrever o áudio.")
+        print("Unable to transcribe the audio.")
 
-# Processa o áudio
-processar_audio(mp3_path, txt_path)
+# Process the audio
+process_audio(mp3_path, txt_path)
