@@ -24,6 +24,7 @@ def correct_transcription(text):
                     "content": "You are a transcription expert specializing in correcting errors in audio-to-text transcriptions. "
                                 "Ensure the output is grammatically correct, follows natural language rules, and maintains the original context. "
                                 "Use proper punctuation and capitalization."
+                                
                 },
                 {
                     "role": "user",
@@ -32,6 +33,40 @@ def correct_transcription(text):
             ],
             model="llama-3.3-70b-versatile",
             temperature=0.3,
+            max_completion_tokens=2048,
+            top_p=1,
+            stop=None,
+            stream=False
+        )
+
+        # The response from the model is the corrected text
+        return chat_completion.choices[0].message.content
+
+    except Exception as e:
+        print(f"An error occurred during correction: {e}")
+        return None
+    
+def resume_transcription(text):
+    try:
+        client = Groq(api_key=API_KEY)
+
+        # Send the text to the Groq model for correction
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Here is a transcript that possibly involves multiple speakers, such as in a meeting or discussion."
+                    "Summarize the key points and main ideas in a complete yet concise manner."
+                    "Focus on the important details, decisions, and insights shared."
+                    "Provide only the summary without adding any extra comments or explanations"
+                },
+                {
+                    "role": "user",
+                    "content": text
+                }
+            ],
+            model="llama-3.3-70b-versatile",
+            temperature=1,
             max_completion_tokens=2048,
             top_p=1,
             stop=None,

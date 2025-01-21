@@ -1,6 +1,6 @@
 # app.py - Main file
 from audio_processing import process_audio
-from groq_correction import correct_transcription
+from groq_correction import *
 import os
 
 # Path to the MP3 file (use the full absolute path here)
@@ -28,6 +28,15 @@ def main():
                 f.write(corrected_text)
 
             print(f"Corrected transcription completed and saved to: {txt_path}")
+            
+            print("Resuming...")
+            resume = resume_transcription(corrected_text)
+            if resume:
+                with open("resume.txt", "w", encoding="utf-8") as f:
+                    f.write(resume)
+
+                print(f"Resume completed and saved to: {txt_path}")
+
         else:
             print("Unable to correct the transcription.")
     else:
