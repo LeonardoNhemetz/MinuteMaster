@@ -27,7 +27,7 @@ def transcribe_audio(mp3_path):
 
         for i, segment_path in enumerate(segments):
             print(f"Processing segment {i+1}/{total_segments}...")
-            result = model.transcribe(segment_path, language="pt")
+            result = model.transcribe(segment_path, language="en")
             final_text += result["text"] + "\n"
             progress = (i + 1) / total_segments * 100
             print(f"Progress: {progress:.2f}%")
