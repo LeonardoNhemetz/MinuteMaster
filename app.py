@@ -1,94 +1,40 @@
-import os
-from langchain.chains import LLMChain
-from langchain_core.prompts import (
-    ChatPromptTemplate,
-    HumanMessagePromptTemplate,
-    MessagesPlaceholder,
-)
-from langchain_core.messages import SystemMessage
-from langchain.chains.conversation.memory import ConversationBufferWindowMemory
-from langchain_groq import ChatGroq
-from PyPDF2 import PdfReader, PdfWriter
-from dotenv import load_dotenv
+import torch
+import torch.nn.functional as F
+from transformers import AutoTokenizer, AutoModel
 
+# Each query needs to be accompanied by an corresponding instruction describing the task.
+task_name_to_instruct = {"example": "Given a question, retrieve passages that answer the question",}
 
-load_dotenv()
+query_prefix = "Instruct: "+task_name_to_instruct["example"]+"\nQuery: "
+queries = [
+    'are judo throws allowed in wrestling?', 
+    'how to become a radiology technician in michigan?'
+    ]
 
-def summarize_pdf(pdf_path, groq_chat):
-    """
-    Summarize the content of a PDF file using the Groq chat model.
+# No instruction needed for retrieval passages
+passage_prefix = ""
+passages = [
+    "Since you're reading this, you are probably someone from a judo background or someone who is just wondering how judo techniques can be applied under wrestling rules. So without further ado, let's get to the question. Are Judo throws allowed in wrestling? Yes, judo throws are allowed in freestyle and folkstyle wrestling. You only need to be careful to follow the slam rules when executing judo throws. In wrestling, a slam is lifting and returning an opponent to the mat with unnecessary force.",
+    "Below are the basic steps to becoming a radiologic technologist in Michigan:Earn a high school diploma. As with most careers in health care, a high school education is the first step to finding entry-level employment. Taking classes in math and science, such as anatomy, biology, chemistry, physiology, and physics, can help prepare students for their college studies and future careers.Earn an associate degree. Entry-level radiologic positions typically require at least an Associate of Applied Science. Before enrolling in one of these degree programs, students should make sure it has been properly accredited by the Joint Review Committee on Education in Radiologic Technology (JRCERT).Get licensed or certified in the state of Michigan."
+]
 
-    Args:
-        pdf_path (str): Path to the PDF file to summarize.
-        groq_chat (ChatGroq): The Groq chat object for text summarization.
+# load model with tokenizer
+model = AutoModel.from_pretrained('nvidia/NV-Embed-v2', trust_remote_code=True)
 
-    Returns:
-        str: The summarized content.
-    """
-    reader = PdfReader(pdf_path)
-    text = ""
+# get the embeddings
+max_length = 32768
+query_embeddings = model.encode(queries, instruction=query_prefix, max_length=max_length)
+passage_embeddings = model.encode(passages, instruction=passage_prefix, max_length=max_length)
 
-    # Extract text from all pages in the PDF
-    for page in reader.pages:
-        text += page.extract_text()
+# normalize embeddings
+query_embeddings = F.normalize(query_embeddings, p=2, dim=1)
+passage_embeddings = F.normalize(passage_embeddings, p=2, dim=1)
 
-    # Create a prompt to summarize the text
-    prompt = ChatPromptTemplate.from_messages([
-        SystemMessage(content="You are a helpful assistant that summarizes text."),
-        HumanMessagePromptTemplate.from_template("Summarize the following text:\n{text}")
-    ])
+# get the embeddings with DataLoader (spliting the datasets into multiple mini-batches)
+# batch_size=2
+# query_embeddings = model._do_encode(queries, batch_size=batch_size, instruction=query_prefix, max_length=max_length, num_workers=32, return_numpy=True)
+# passage_embeddings = model._do_encode(passages, batch_size=batch_size, instruction=passage_prefix, max_length=max_length, num_workers=32, return_numpy=True)
 
-    # Generate the summary
-    chain = LLMChain(llm=groq_chat, prompt=prompt)
-    summary = chain.predict(text=text)
-
-    return summary
-
-def save_summary_to_pdf(summary, output_path):
-    """
-    Save the summarized content to a new PDF file.
-
-    Args:
-        summary (str): The summarized content.
-        output_path (str): Path to save the new PDF file.
-    """
-    writer = PdfWriter()
-    writer.add_page(writer.add_blank_page())
-
-    # Write the summary as a single text page
-    writer.pages[0].insert_text(summary)
-
-    with open(output_path, 'wb') as output_pdf:
-        writer.write(output_pdf)
-
-def main():
-    """
-    Main function to summarize all PDF files in the project root.
-    """
-    # Get Groq API key
-    groq_api_key = os.environ['GROQ_API_KEY']
-    model = 'llama-3.3-70b-versatile'
-
-    # Initialize Groq Langchain chat object
-    groq_chat = ChatGroq(
-        groq_api_key=groq_api_key, 
-        model_name=model
-    )
-
-    # Get list of PDF files in the project root
-    pdf_files = [f for f in os.listdir('.') if f.endswith('.pdf')]
-
-    if not pdf_files:
-        print("No PDF files found in the project root.")
-        return
-
-    for pdf_file in pdf_files:
-        print(f"Summarizing {pdf_file}...")
-        summary = summarize_pdf(pdf_file, groq_chat)
-
-        output_file = f"summary_{pdf_file}"
-        save_summary_to_pdf(summary, output_file)
-        print(f"Summary saved to {output_file}")
-
-if __name__ == "__main__":
-    main()
+scores = (query_embeddings @ passage_embeddings.T) * 100
+print(scores.tolist())
+# [[87.42693328857422, 0.46283677220344543], [0.965264618396759, 86.03721618652344]]
