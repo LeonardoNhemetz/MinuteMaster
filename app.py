@@ -1,6 +1,7 @@
 # app.py - Main file
 from audio_processing import process_audio
 from groq_correction import *
+from voice_mode import *
 import os
 
 # Path to the MP3 file (use the full absolute path here)
@@ -36,6 +37,8 @@ def main():
                     f.write(resume)
 
                 print(f"Resume completed and saved to: {txt_path}")
+
+                tts_converter(resume)
 
         else:
             print("Unable to correct the transcription.")
