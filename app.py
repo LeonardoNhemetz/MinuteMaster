@@ -1,40 +1,83 @@
-import torch
-import torch.nn.functional as F
-from transformers import AutoTokenizer, AutoModel
+from langchain.document_loaders import UnstructuredPDFLoader, OnlinePDFLoader, PyPDFLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.vectorstores import Pinecone
 
-# Each query needs to be accompanied by an corresponding instruction describing the task.
-task_name_to_instruct = {"example": "Given a question, retrieve passages that answer the question",}
+import os
+from dotenv import load_dotenv
+import numpy as np  # Para salvar os embeddings
 
-query_prefix = "Instruct: "+task_name_to_instruct["example"]+"\nQuery: "
-queries = [
-    'are judo throws allowed in wrestling?', 
-    'how to become a radiology technician in michigan?'
-    ]
+from sentence_transformers import SentenceTransformer
+from pinecone import Pinecone, ServerlessSpec
 
-# No instruction needed for retrieval passages
-passage_prefix = ""
-passages = [
-    "Since you're reading this, you are probably someone from a judo background or someone who is just wondering how judo techniques can be applied under wrestling rules. So without further ado, let's get to the question. Are Judo throws allowed in wrestling? Yes, judo throws are allowed in freestyle and folkstyle wrestling. You only need to be careful to follow the slam rules when executing judo throws. In wrestling, a slam is lifting and returning an opponent to the mat with unnecessary force.",
-    "Below are the basic steps to becoming a radiologic technologist in Michigan:Earn a high school diploma. As with most careers in health care, a high school education is the first step to finding entry-level employment. Taking classes in math and science, such as anatomy, biology, chemistry, physiology, and physics, can help prepare students for their college studies and future careers.Earn an associate degree. Entry-level radiologic positions typically require at least an Associate of Applied Science. Before enrolling in one of these degree programs, students should make sure it has been properly accredited by the Joint Review Committee on Education in Radiologic Technology (JRCERT).Get licensed or certified in the state of Michigan."
-]
+# Carregar variáveis de ambiente
+load_dotenv()
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 
-# load model with tokenizer
-model = AutoModel.from_pretrained('nvidia/NV-Embed-v2', trust_remote_code=True)
+# Carregar o modelo de embeddings
+model = SentenceTransformer("billatsectorflow/stella_en_1.5B_v5", trust_remote_code=True, device="cuda")
 
-# get the embeddings
-max_length = 32768
-query_embeddings = model.encode(queries, instruction=query_prefix, max_length=max_length)
-passage_embeddings = model.encode(passages, instruction=passage_prefix, max_length=max_length)
+# Carregar o PDF
+print("Carregando o PDF...")
+loader = PyPDFLoader("pdf.pdf")
+data = loader.load()
+print("PDF carregado!")
 
-# normalize embeddings
-query_embeddings = F.normalize(query_embeddings, p=2, dim=1)
-passage_embeddings = F.normalize(passage_embeddings, p=2, dim=1)
+# Dividir o texto em partes
+print("Dividindo o texto em partes...")
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=8192, chunk_overlap=0)
+texts = text_splitter.split_documents(data)
+print(f"Você tem {len(texts)} documentos em seu dataset.")
 
-# get the embeddings with DataLoader (spliting the datasets into multiple mini-batches)
-# batch_size=2
-# query_embeddings = model._do_encode(queries, batch_size=batch_size, instruction=query_prefix, max_length=max_length, num_workers=32, return_numpy=True)
-# passage_embeddings = model._do_encode(passages, batch_size=batch_size, instruction=passage_prefix, max_length=max_length, num_workers=32, return_numpy=True)
+# Criar embeddings para cada parte
+print("Gerando embeddings para os textos...")
+text_contents = [doc.page_content for doc in texts]
+embeddings = []
 
-scores = (query_embeddings @ passage_embeddings.T) * 100
-print(scores.tolist())
-# [[87.42693328857422, 0.46283677220344543], [0.965264618396759, 86.03721618652344]]
+for i, content in enumerate(text_contents, start=1):
+    embeddings.append(model.encode(content))
+    print(f"Gerando embedding {i}/{len(text_contents)}...")
+
+# Salvar os embeddings localmente (na raiz)
+np.save("embeddings.npy", np.array(embeddings))
+print("Embeddings salvos com sucesso!")
+
+# Carregar os embeddings quando necessário
+loaded_embeddings = np.load("embeddings.npy", allow_pickle=True)
+print("Embeddings carregados com sucesso!")
+
+# Inicializar Pinecone
+print("Inicializando o Pinecone...")
+pc = Pinecone(api_key=PINECONE_API_KEY)
+
+index_name = "pdfpython"
+dimension = 1024  # Dimensão do embedding
+
+# Criar o índice no Pinecone se não existir
+if index_name not in pc.list_indexes().names():
+    print(f"Índice '{index_name}' não encontrado. Criando índice...")
+    pc.create_index(
+        name=index_name,
+        dimension=dimension,
+        metric="cosine",
+        spec=ServerlessSpec(
+            cloud="aws",
+            region="us-west-2"
+        )
+    )
+    print(f"Índice '{index_name}' criado com sucesso!")
+else:
+    print(f"Índice '{index_name}' já existe.")
+
+# Recuperar o índice
+index = pc.Index(index_name)
+print(f"Índice '{index_name}' inicializado com sucesso!")
+
+# Inserir os textos e embeddings no Pinecone
+print("Inserindo os textos e embeddings no Pinecone...")
+for i, (text, embedding) in enumerate(zip(texts, loaded_embeddings), start=1):
+    index.upsert([
+        (str(i), embedding, {"text": text.page_content})
+    ])
+    print(f"Inserindo documento {i}/{len(texts)}...")
+
+print("Processo concluído!")
